@@ -1,0 +1,39 @@
+export default async function handler(req, res) {
+  // Only allow POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { apiKey, image, mime } = req.body;
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'No API key provided' });
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mime, data: image } },
+            { type: 'text', text: 'Extract ONLY these fields from this product label. Respond ONLY with valid JSON and nothing else:\n{"productName":"full brand and product name","expiryDate":"best before or expiry date exactly as shown on label","lotNumber":"batch number or lot number"}\nIf a field is not visible use "". Look for: batch no, lot no, best before, used best before, exp, expiry.' }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Proxy error' });
+  }
+}
