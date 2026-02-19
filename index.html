@@ -851,7 +851,13 @@ function setView(v) {
 
 function updateForm(field, val) {
   state.form[field] = val;
-  render();
+  // Don't re-render while typing - just save the value
+}
+
+function handleSearch(val) {
+  state.searchQuery = val;
+  clearTimeout(state._searchTimer);
+  state._searchTimer = setTimeout(() => render(), 300);
 }
 
 function clearImage() {
@@ -880,11 +886,6 @@ function resetForm() {
 
 function handleApiKey(val) {
   saveApiKey(val.trim());
-}
-
-function handleSearch(val) {
-  state.searchQuery = val;
-  render();
 }
 
 function handleImageFile(input) {
