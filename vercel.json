@@ -18,6 +18,6 @@
     }
   ],
   "rewrites": [
-    { "source": "/((?!api|sw\\.js|manifest\\.json|icon-192\\.png|icon-512\\.png).*)", "destination": "/index.html" }
+    { "source": "/((?!api|sw\\.js|app\\.js|styles\\.css|manifest\\.json|icon-192\\.png|icon-512\\.png).*)", "destination": "/index.html" }
   ]
 }

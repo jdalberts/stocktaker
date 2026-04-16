@@ -1,7 +1,9 @@
-const CACHE_NAME = 'stocktaker-v6';
+const CACHE_NAME = 'stocktaker-v7';
 const ASSETS = [
   './',
   './index.html',
+  './styles.css',
+  './app.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
