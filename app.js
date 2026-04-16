@@ -76,7 +76,11 @@ function renderScan() {
     </div>` : ''}
 
     ${state.error ? `<div class="error-box">⚠️ ${state.error}</div>` : ''}
-    ${state.success ? `<div class="success-box">✓ ${state.success}</div>` : ''}
+    ${state._lastAddedId ? `
+      <div class="undo-toast">
+        <span>✓ ${escHtml(state.success || 'Added')}</span>
+        <button class="undo-btn" onclick="undoLastAdded()">UNDO</button>
+      </div>` : (state.success ? `<div class="success-box">✓ ${state.success}</div>` : '')}
 
     <div class="card">
       <div class="card-header">📷 Scan Label</div>
@@ -88,7 +92,7 @@ function renderScan() {
               <div class="spinner"></div>
               Reading label with AI...
             </div>` : ''}
-          <button class="btn btn-secondary" onclick="clearImage()" style="margin-bottom:0;margin-top:0;width:auto;padding:6px 14px;font-size:12px;">
+          <button class="btn btn-secondary" onclick="clearImage()" style="margin-bottom:0;margin-top:0;width:auto;padding:10px 16px;font-size:13px;min-height:40px;">
             ↩ Use different image
           </button>
         ` : `
@@ -99,6 +103,16 @@ function renderScan() {
             <div class="upload-sub">Tap to open camera or choose from gallery</div>
           </div>
         `}
+      </div>
+    </div>
+
+    <div class="card card-qty">
+      <div class="card-header">📦 Quantity</div>
+      <div class="card-body">
+        <input type="number" inputmode="numeric" min="0" step="0.5" class="qty-input" value="${f.quantity}" oninput="updateForm('quantity', this.value)" placeholder="0" />
+        <div class="unit-grid">
+          ${units.map(u => `<button class="unit-btn ${f.unit === u ? 'selected' : ''}" onclick="updateForm('unit','${u}')">${u}</button>`).join('')}
+        </div>
       </div>
     </div>
 
@@ -126,18 +140,8 @@ function renderScan() {
     </div>
 
     <div class="card">
-      <div class="card-header">📦 Stock Count</div>
+      <div class="card-header">📝 More</div>
       <div class="card-body">
-        <div class="field">
-          <label>Quantity *</label>
-          <input type="number" min="0" step="0.5" value="${f.quantity}" oninput="updateForm('quantity', this.value)" placeholder="0" />
-        </div>
-        <div class="field">
-          <label>Unit Type</label>
-          <div class="unit-grid">
-            ${units.map(u => `<button class="unit-btn ${f.unit === u ? 'selected' : ''}" onclick="updateForm('unit','${u}')">${u}</button>`).join('')}
-          </div>
-        </div>
         <div class="field">
           <label>Stock Date</label>
           <input type="date" value="${f.stockDate}" oninput="updateForm('stockDate', this.value)" />
@@ -149,12 +153,29 @@ function renderScan() {
       </div>
     </div>
 
-    <button class="btn btn-primary" onclick="addEntry()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Add to Stock
-    </button>
     <button class="btn btn-secondary" onclick="resetForm()">Clear Form</button>
+
+    <div class="sticky-add-wrap">
+      <button id="stickyAdd" class="sticky-add ${isScanReady() ? 'ready' : ''}" onclick="addEntry()" ${isScanReady() ? '' : 'disabled'}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add to Stock
+      </button>
+    </div>
   `;
+}
+
+function isScanReady() {
+  const f = state.form || {};
+  const q = parseFloat(f.quantity);
+  return !!(f.productName && f.productName.trim() && !isNaN(q) && q > 0);
+}
+
+function updateStickyAddState() {
+  const btn = document.getElementById('stickyAdd');
+  if (!btn) return;
+  const ready = isScanReady();
+  btn.classList.toggle('ready', ready);
+  btn.disabled = !ready;
 }
 
 // ============================================================
@@ -313,11 +334,16 @@ function setView(v) {
   state.view = v;
   state.error = '';
   state.success = '';
+  state._lastAddedId = null;
+  clearTimeout(_undoTimer);
   render(true);
 }
 
 function updateForm(field, val) {
   state.form[field] = val;
+  // Keep the sticky Add button's ready state in sync without a full re-render
+  // (which would blur the input and close the mobile keyboard).
+  updateStickyAddState();
   // For button-style fields (unit), re-render since user isn't typing
   if (field === 'unit') render(true);
 }
@@ -459,6 +485,8 @@ async function extractLabel(base64, mime) {
   render(true);
 }
 
+let _undoTimer = null;
+
 function addEntry() {
   const f = state.form;
   if (!f.productName.trim()) { state.error = 'Product name is required.'; render(true); return; }
@@ -477,9 +505,39 @@ function addEntry() {
   };
   state.entries.unshift(entry);
   saveEntries();
-  state.success = `"${entry.productName}" added — ${entry.quantity} ${entry.unit}`;
+
+  // Undo window: the toast stays for 5s with UNDO action
+  state._lastAddedId = entry.id;
+  clearTimeout(_undoTimer);
+  _undoTimer = setTimeout(() => {
+    state._lastAddedId = null;
+    state.success = '';
+    render(true);
+  }, 5000);
+
   resetForm();
-  state.success = `✓ Added successfully! Go to Stock List to view.`;
+  state.success = `Added "${entry.productName}" × ${entry.quantity} ${entry.unit}`;
+  render(true);
+
+  // Scan-next-pallet flow: auto-open the camera. Browsers require a user
+  // gesture for file-input click() — the Add tap is that gesture, and
+  // requestAnimationFrame keeps us inside its window on most engines.
+  // Falls back gracefully if the browser refuses (the upload zone is right there).
+  requestAnimationFrame(() => {
+    const fi = document.querySelector('.upload-zone input[type="file"]');
+    if (fi) {
+      try { fi.click(); } catch (e) { /* user can tap the zone */ }
+    }
+  });
+}
+
+function undoLastAdded() {
+  if (!state._lastAddedId) return;
+  state.entries = state.entries.filter(e => e.id !== state._lastAddedId);
+  saveEntries();
+  state._lastAddedId = null;
+  state.success = '';
+  clearTimeout(_undoTimer);
   render(true);
 }
 

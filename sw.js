@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stocktaker-v7';
+const CACHE_NAME = 'stocktaker-v9';
 const ASSETS = [
   './',
   './index.html',
