@@ -335,6 +335,7 @@ function setView(v) {
   state.error = '';
   state.success = '';
   state._lastAddedId = null;
+  state._lastAddedUndo = null;
   clearTimeout(_undoTimer);
   render(true);
 }
@@ -492,7 +493,7 @@ function addEntry() {
   if (!f.productName.trim()) { state.error = 'Product name is required.'; render(true); return; }
   if (!f.quantity || isNaN(f.quantity) || parseFloat(f.quantity) < 0) { state.error = 'Please enter a valid quantity.'; render(true); return; }
 
-  const entry = {
+  const candidate = {
     id: Date.now(),
     productName: f.productName.trim(),
     expiryDate: f.expiryDate.trim(),
@@ -503,20 +504,32 @@ function addEntry() {
     notes: f.notes.trim(),
     addedAt: new Date().toISOString()
   };
-  state.entries.unshift(entry);
+
+  const { entries, action } = StocktakerMerge.mergeOrAppendEntry(state.entries, candidate);
+  state.entries = entries;
   saveEntries();
 
-  // Undo window: the toast stays for 5s with UNDO action
-  state._lastAddedId = entry.id;
+  // Undo window: the toast stays for 5s with UNDO action.
+  // _lastAddedUndo holds either {type:'new'} (undo = delete row) or
+  // {type:'merge', prevQuantity, prevAddedAt, prevIndex} (undo = restore row).
+  state._lastAddedId = action.id;
+  state._lastAddedUndo = action;
   clearTimeout(_undoTimer);
   _undoTimer = setTimeout(() => {
     state._lastAddedId = null;
+    state._lastAddedUndo = null;
     state.success = '';
     render(true);
   }, 5000);
 
+  const topRow = state.entries[0];
+  const successMsg = action.type === 'merge'
+    ? `Merged into "${topRow.productName}": ${topRow.quantity} ${topRow.unit} (+${action.addedQuantity})`
+    : `Added "${candidate.productName}" × ${candidate.quantity} ${candidate.unit}`;
+
   resetForm();
-  state.success = `Added "${entry.productName}" × ${entry.quantity} ${entry.unit}`;
+  // resetForm() wipes state.success, so set it after.
+  state.success = successMsg;
   render(true);
 
   // Scan-next-pallet flow: auto-open the camera. Browsers require a user
@@ -533,9 +546,25 @@ function addEntry() {
 
 function undoLastAdded() {
   if (!state._lastAddedId) return;
-  state.entries = state.entries.filter(e => e.id !== state._lastAddedId);
+  const u = state._lastAddedUndo;
+  if (u && u.type === 'merge') {
+    // Revert a merge: subtract the added quantity and restore the row's
+    // previous position and addedAt timestamp.
+    const idx = state.entries.findIndex(e => e.id === state._lastAddedId);
+    if (idx !== -1) {
+      const row = state.entries[idx];
+      row.quantity = u.prevQuantity;
+      row.addedAt = u.prevAddedAt;
+      state.entries.splice(idx, 1);
+      const target = Math.min(u.prevIndex, state.entries.length);
+      state.entries.splice(target, 0, row);
+    }
+  } else {
+    state.entries = state.entries.filter(e => e.id !== state._lastAddedId);
+  }
   saveEntries();
   state._lastAddedId = null;
+  state._lastAddedUndo = null;
   state.success = '';
   clearTimeout(_undoTimer);
   render(true);

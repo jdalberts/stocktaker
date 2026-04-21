@@ -1,9 +1,10 @@
-const CACHE_NAME = 'stocktaker-v9';
+const CACHE_NAME = 'stocktaker-v10';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './lib/merge.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

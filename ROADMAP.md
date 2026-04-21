@@ -5,10 +5,10 @@
 
 ## Next
 - Haptic feedback (`navigator.vibrate`) on successful Add
-- Duplicate-lot warning — flash a banner if the scanned lot number is already logged today, to prevent double-counting a pallet
 - "Same product — next pallet" shortcut button — skip camera and keep auto-filled fields when multiple pallets share a SKU (just re-enter quantity)
 
 ## Done
+- Duplicate-lot merge — same product + lot + unit sums into one row instead of creating duplicates; undo restores the prior quantity
 - Serverless scan proxy with CORS origin allowlist
 - Model bumped to `claude-sonnet-4-6`
 - Defensive parsing of Anthropic response shape
